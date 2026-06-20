@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Local device/secret config (commit the .example versions instead)
+host/devices.toml
+firmware/m0/config.h
+
+# Scratch output (e.g. ddp_sink PNG dumps)
+/scratch/

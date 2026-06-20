@@ -1,0 +1,36 @@
+# Copyright 2026 The Blitzen Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copy this file to devices.toml (gitignored) and edit it for your network.
+# Each [targets.NAME] entry defines one display. type is one of:
+#   wled  - stock WLED array (DDP live + HTTP/JSON presets/playlists)
+#   m0    - custom Feather M0 panel (DDP live + UDP store/play control)
+#   ddp   - any plain DDP receiver, including the software sink below
+
+# A WLED 8x32 array on the LAN. Live frames go over DDP; presets/playlists over HTTP.
+[targets.arr1]
+type = "wled"
+host = "192.168.1.50"
+width = 32
+height = 8
+# http_port = 80     # optional
+# ddp_port = 4048    # optional
+
+# The custom HUB75 panel (Feather M0 + RGB Matrix FeatherWing), 32x32.
+[targets.panel]
+type = "m0"
+host = "192.168.1.60"
+width = 32
+height = 32
+# ddp_port = 4048        # optional
+# control_port = 4049    # optional
+
+# The software DDP sink (host.tools.ddp_sink) for hardware-free demos:
+#   python -m host.tools.ddp_sink --geometry 32x32
+#   blitzen --config host/devices.example.toml run --pattern plasma --target localsink --duration 5
+[targets.localsink]
+type = "ddp"
+host = "127.0.0.1"
+width = 32
+height = 32
+ddp_port = 4048
