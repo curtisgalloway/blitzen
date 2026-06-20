@@ -57,6 +57,23 @@ Copy and edit the device map for real hardware:
 cp host/devices.example.toml devices.toml   # then set each target's host/IP
 ```
 
+### Pattern playground (browser, no hardware)
+
+A live, in-browser way to explore every pattern and preview different grid sizes and panel
+layouts. Frames are rendered by the **real `host.patterns` code** (so newly registered
+patterns appear automatically), and each pattern's constructor is introspected into live
+sliders/color pickers:
+
+```bash
+uv run python -m host.tools.web_demo        # opens http://127.0.0.1:8080
+```
+
+Controls: pick a pattern and tweak its parameters live; set panel `w`/`h` (or use the
+32×32 / 8×32 / 64×8 / 16×16 / 64×64 presets); tile panels into a video wall (`tiles →`/`↓`
+with seam overlay); and preview the physical look — round-LED vs square pixels, gap, zoom,
+rotation, and serpentine wiring — plus fps, time-scale, and a scrub bar. Add `--no-open` to
+skip launching a browser, or `--port N` to change the port.
+
 ### 1. Bring up a WLED array first (fastest path to real pixels)
 
 ```bash
@@ -160,13 +177,15 @@ needs a re‑scan once both panels are powered.
 | `info` | query M0 free RAM / slot usage |
 | `probe` | check WLED version + 2D-matrix config |
 
-Patterns: `plasma`, `scroll`, `solid`, `gradient` (all procedural — valid at any geometry).
+Patterns: `plasma`, `scroll`, `solid`, `gradient`, `fire`, `ripple`, `swirl`, `sparkle`, `rain`,
+`bounce`, `m5` (the TOS M-5 "Ultimate Computer" panel), `scope`/`pulse`/`lissajous` (phosphor
+oscilloscope traces) — all procedural, valid at any geometry.
 
 ## Layout
 
 ```
 host/                Python package (frame, patterns, transports, encoder, targets,
-                     orchestrator, cli, tools/ddp_sink, tests)
+                     orchestrator, cli, tools/{ddp_sink,web_demo}, tests)
 firmware/m0/         Arduino C++ thin client (Protomatter + WiFi101) + build README
 led_control_design.md / claude_code_handoff.md / AGENTS.md
 ```
