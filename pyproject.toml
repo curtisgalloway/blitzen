@@ -27,6 +27,14 @@ dependencies = [
 [project.scripts]
 blitzen = "host.cli:main"
 
+# Optional extras for the webcam pixel-mapping tools (host/tools/calibrate_camera.py,
+# render_mapped.py --capture). Install with: uv sync --extra vision
+[project.optional-dependencies]
+vision = [
+    "opencv-python-headless>=4.8",
+    "numpy>=1.24",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",

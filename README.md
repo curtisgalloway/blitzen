@@ -124,6 +124,32 @@ addressable matrix, running WLED **16.0.0**.
 > WLED's current limit / brightness low for USB‑only testing, or power the array from external
 > 5 V (sharing ground with the Stick). Two arrays (512 px) need an external supply.
 
+## Camera pixel-mapping (auto-calibration)
+
+Some matrices (tiled 8×8 sub‑panels, odd serpentine, several chained panels) don't map cleanly
+from a flat WLED 2D config, so logical frames come out scrambled. Instead of guessing the
+layout, point a webcam at the panel and let Blitzen learn it: it lights each LED in turn, finds
+its position in the camera image, and writes a **ledmap** (DDP index → physical col,row).
+
+```bash
+uv sync --extra vision     # OpenCV + NumPy (one-time)
+
+# 1) set the WLED device to gw*gh LEDs (e.g. 64x8 = 512), aim a webcam at the panel
+#    (whole panel framed, in focus, dark background; hold still during the ~1 min scan)
+uv run python -m host.tools.calibrate_camera --ip 10.0.0.5 --gw 64 --gh 8 --cam 0
+#    -> writes ledmap.json (+ calib_grid.png overlay)
+
+# 2) drive it through the map -- geometry check, then scrolling text:
+uv run python -m host.tools.render_mapped --ip 10.0.0.5 --map ledmap.json --mode cols --capture
+uv run python -m host.tools.render_mapped --ip 10.0.0.5 --map ledmap.json --mode scroll \
+    --text "FOUR SCORE AND SEVEN YEARS"
+```
+
+Scanning one LED at a time makes detection robust to bloom/auto‑exposure (a single lit dot is
+always a clean blob). `render_mapped` carries a minimal 5×7 font (extend `FONT` for full
+coverage). Validated on the Sparkle Motion + single 8×32; a chained 64×8 (two panels) just
+needs a re‑scan once both panels are powered.
+
 ## CLI
 
 | Command | Purpose |

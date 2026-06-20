@@ -15,3 +15,8 @@ firmware/m0/secrets.yaml
 
 # Scratch output (e.g. ddp_sink PNG dumps)
 /scratch/
+
+# Camera-calibration / capture outputs
+ledmap.json
+calib_grid.png
+verify.png
