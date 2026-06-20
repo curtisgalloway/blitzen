@@ -90,6 +90,40 @@ uv run blitzen run --pattern plasma --target panel --target arr1 --fps 30
 uv run blitzen run --assign panel=plasma@30 --assign arr1=scroll@15
 ```
 
+## WLED array bring-up
+
+Validated rig: an **Adafruit Sparkle Motion Stick** (ESP32) driving an **8×32** (256 px)
+addressable matrix, running WLED **16.0.0**.
+
+1. **Flash WLED + join WiFi** — use the [WLED web installer](https://install.wled.me)
+   (Chrome/Edge). If its Wi‑Fi step doesn't appear, join the device's `WLED-AP` (password
+   `wled1234`) and set your SSID at `http://4.3.2.1` → WiFi Setup.
+2. **Find its IP** — `uv run python -m host.tools.find_wled` (scans your /24 for WLED's API).
+3. **Configure LED output + 2D matrix** over the JSON API — GPIO 21 is the Stick's data output;
+   the 500 mA cap keeps it USB‑safe. A reboot is required for the 2D map to take effect:
+   ```bash
+   IP=10.66.27.221
+   curl -s -X POST -H "Content-Type: application/json" \
+     -d '{"hw":{"led":{"total":256,"maxpwr":500,"ins":[{"start":0,"len":256,"pin":[21],"order":0,"type":22,"ledma":55}]}}}' \
+     http://$IP/json/cfg
+   curl -s -X POST -H "Content-Type: application/json" \
+     -d '{"hw":{"led":{"matrix":{"mpc":1,"panels":[{"s":true,"x":0,"y":0,"h":8,"w":32}]}}}}' \
+     http://$IP/json/cfg
+   curl -s -X POST -d '{"rb":true}' http://$IP/json/state    # reboot to apply the 2D map
+   ```
+   (Equivalently, set LED Preferences + 2D Configuration in the WLED UI.) Flip `"s"`
+   (serpentine) if alternate rows zigzag.
+4. **Add to `devices.toml`** and validate:
+   ```bash
+   uv run blitzen probe --target arr1                    # WLED >= 0.14 + 2D matrix: yes
+   uv run blitzen run   --pattern plasma --target arr1   # live DDP
+   uv run blitzen wled  --target arr1 --preset 1         # standalone preset trigger
+   ```
+
+> ⚠️ **Power:** 256 WS2812 at full white ≈ 15 A, but the Stick's USB input is fused at 2 A. Keep
+> WLED's current limit / brightness low for USB‑only testing, or power the array from external
+> 5 V (sharing ground with the Stick). Two arrays (512 px) need an external supply.
+
 ## CLI
 
 | Command | Purpose |
@@ -113,16 +147,16 @@ led_control_design.md / claude_code_handoff.md / AGENTS.md
 
 ## Status
 
-The host is fully implemented and tested (`uv run pytest`, 83 tests). The M0 firmware is
-**validated on real hardware** (Feather M0 + 32×32 panel on WiFi): WiFi join, live DDP
-rendering, control over WiFi, an untethered RAM loop, live-preempts-loop with idle-timeout
-resume, and concurrent multi-target drive. Measured memory and the validation log are in
-`firmware/m0/README.md` (notably: Protomatter dominates SRAM, so the default is 3-bit /
-6-frame loop). Remaining hardware TODO: the same checks against a **real WLED array** — none on
-the LAN yet, but the host drives WLED through the same DDP path already proven on the M0.
+Both display classes are **validated on real hardware** (and `uv run pytest` passes, 83 tests):
 
-Build the firmware with `firmware/m0/flash.sh` (fills `config.h` from `secrets.yaml`, compiles,
-uploads).
+- **M0 panel** (Feather M0 + 32×32): WiFi join, live DDP rendering, control over WiFi, an
+  untethered RAM loop, and live-preempts-loop with idle-timeout resume. Measured memory + log in
+  `firmware/m0/README.md` (Protomatter dominates SRAM → default 3-bit / 6-frame loop). Build with
+  `firmware/m0/flash.sh`.
+- **WLED array** (Adafruit Sparkle Motion Stick + 8×32, WLED 16.0.0): `probe`, live DDP
+  (plasma/scroll), and preset trigger — see [WLED array bring-up](#wled-array-bring-up).
+- **Concurrency**: one `blitzen run` drives the M0 panel and the WLED array at once, same or
+  different patterns — proven on both devices simultaneously.
 
 ## License
 
