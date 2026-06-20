@@ -10,49 +10,49 @@ Thin display client for an **Adafruit Feather M0 WiFi** (SAMD21 + ATWINC1500) wi
 DDP frames, and plays a host-uploaded 16-color loop untethered. All the generality lives
 in the host (see `../../led_control_design.md` §2); this firmware stays thin on purpose.
 
-## Libraries (pin these)
+## Libraries
 
-Install via Library Manager / `arduino-cli`. Record the **exact** versions you build with
-in the table — these are the intended pins; bump only deliberately.
+Versions below are what this firmware was **built and flashed against** (arduino-cli 1.5.1):
 
-| Library | Pinned version | Notes |
+| Library | Version | Notes |
 |---|---|---|
-| Adafruit Protomatter | `1.6.x` | HUB75 driver; subclasses Adafruit_GFX |
-| Adafruit GFX Library | `1.11.x` | pulled in by Protomatter |
-| WiFi101 | `0.16.x` | **ATWINC1500** — do **not** use WiFiNINA |
-| Adafruit SAMD Boards | `1.7.x` | board package for the Feather M0 |
+| Adafruit Protomatter | `1.7.1` | HUB75 driver; subclasses Adafruit_GFX |
+| Adafruit GFX Library | `1.12.6` | pulled in by Protomatter |
+| WiFi101 | `0.16.1` | **ATWINC1500** — do **not** use WiFiNINA |
+| Adafruit SAMD Boards (core) | `1.7.17` | board package for the Feather M0 |
 
-> `TODO (on hardware): replace the x's with the versions you actually compiled against.`
+## Build & flash
 
-## Build & flash (arduino-cli)
+One-time toolchain install:
 
 ```bash
-# one-time: board package + libraries
+brew install arduino-cli
+arduino-cli config init
 arduino-cli config add board_manager.additional_urls \
   https://adafruit.github.io/arduino-board-index/package_adafruit_index.json
 arduino-cli core update-index
 arduino-cli core install adafruit:samd
 arduino-cli lib install "Adafruit Protomatter" "Adafruit GFX Library" "WiFi101"
-
-# secrets
-cp config.h.example config.h        # then edit WIFI_SSID / WIFI_PASS
-
-# Arduino requires the sketch folder name to match the .ino name. This repo keeps the
-# handoff's firmware/m0/m0_display_client.ino path, so build via a matching-name copy:
-mkdir -p /tmp/m0_display_client
-cp m0_display_client.ino config.h /tmp/m0_display_client/
-arduino-cli compile --fqbn adafruit:samd:adafruit_feather_m0 /tmp/m0_display_client
-arduino-cli upload  -p /dev/cu.usbmodemXXXX \
-  --fqbn adafruit:samd:adafruit_feather_m0 /tmp/m0_display_client
-
-# watch the boot log (free RAM + slot capacity print here)
-arduino-cli monitor -p /dev/cu.usbmodemXXXX -c baudrate=115200
 ```
 
-> Reality-vs-spec flag: the handoff specifies `firmware/m0/m0_display_client.ino`, but the
-> Arduino toolchain requires the sketch's folder name to equal the sketch name. The
-> matching-name copy above is the workaround; alternatively open the file in the Arduino IDE
-> and let it create the wrapping folder.
+Configure WiFi and flash:
+
+```bash
+cp secrets.example.yaml secrets.yaml    # then edit ssid/password -- 2.4 GHz only!
+./flash.sh                              # gen config.h + compile + upload
+arduino-cli monitor -p /dev/cu.usbmodemXXXX -c baudrate=115200   # boot log: free RAM, slots, IP
+```
+
+`flash.sh` copies the sketch into `build/m0_display_client/` (a matching-name folder, which
+Arduino requires), runs `gen_config.py` to turn `secrets.yaml` into `config.h`, then compiles
+and uploads for `adafruit:samd:adafruit_feather_m0`. Override the panel config at build time,
+e.g. `arduino-cli compile --build-property "compiler.cpp.extra_flags=-DBIT_DEPTH=2" build/m0_display_client`.
+
+> Reality-vs-spec flags:
+> - The handoff specifies `firmware/m0/m0_display_client.ino`, but Arduino requires the sketch
+>   folder name to equal the sketch name — `flash.sh` handles this via the `build/` copy.
+> - `arduino-cli upload` performs the 1200 bps bootloader touch itself, so you only need to
+>   double-tap reset for the first flash (or if the board is wedged).
 
 ## FeatherWing pin map
 
@@ -69,34 +69,52 @@ trusting it:
 ATWINC1500 control pins (Feather M0 WiFi): CS 8, IRQ 7, RST 4, EN 2. Latch/OE use pins 0/1,
 so `Serial1` is unavailable; USB `Serial` (the boot log) still works.
 
-## Measured memory (fill in from a real build)
+## Measured memory (real hardware)
 
 The slot ring is sized **at boot from measured free RAM**, never hardcoded (spec §5.1,
-open question 1). The sketch prints both numbers; record them here.
+open question 1). Per-config free RAM with the **default 4096 B safety margin** and
+INDEXED16 = 560 B/slot + 3 B metadata (`capacity = (free_ram - 4096) / 563`):
 
-```
-free RAM after init      = TODO  bytes   (open question 1; WiFi101 buffers dominate, Q2)
-slot capacity (frames)   = TODO
+| Panel config | free RAM after init | slot capacity |
+|---|---|---|
+| 4-bit, double-buffered | 3547 B | 0 |
+| **3-bit, double-buffered (default)** | **7635 B** | **6** |
+| 2-bit, double-buffered | 11739 B | 13 |
+| 4-bit, single-buffered | 11739 B | 13 |
 
-capacity = (free_ram_after_init - 4096 margin) / 563
-           where 563 = 560 bytes/slot (48 palette + 512 packed 4-bit indices) + 3 metadata
-```
+RAM breakdown (4-bit double-buffered): 20035 B free at boot → 3619 B right after
+`matrix.begin()`, so **Protomatter dominates at ~16 KB**; WiFi101's buffers are static
+(counted before boot) and cost only ~72 B dynamically.
 
-Bit depth is `BIT_DEPTH 4` (≈4 KB panel buffer). Raising it to 5–6 improves color depth and
-reduces the slot pool — re-measure if you change it.
+**Why the 4096 B margin:** with a 1024 B margin the slot pool grew so far that `freeRam()`
+went *negative* (−45, reported over an `INFO` query) — WiFi101's UDP receive path drives the
+stack deep enough to collide with the heap. 4096 B keeps `INFO` free RAM healthily positive
+(measured 2755 B with 0 slots; ~1275 B with 6 slots loaded after socket traffic — tight but
+stable across all the validation runs).
 
-## On-hardware validation checklist (run by the operator)
+**This corrects the spec.** §5.1 estimated ~4 KB for the panel and named WiFi101 the dominant
+unknown — on real hardware it is the reverse: Protomatter dominates and WiFi101 is mostly
+static, and §5.2's "~28-frame sweet spot" assumed 12–16 KB of free pool this 32 KB SAMD21
+does not have. The default is `BIT_DEPTH 3` (6-frame loop) with double-buffering kept for
+tear-free live DDP (answers open question 2). For a longer loop, build with `-DBIT_DEPTH=2`
+(13 frames, lower color depth).
 
-1. **Boot**: panel shows the diagonal-rainbow fallback; serial prints the IP, free RAM, and
-   slot capacity. → record the two numbers above.
-2. **Live (step 2 of the build order)**: from the host,
-   `blitzen run --pattern plasma --target panel` — the panel shows plasma, driven by the
-   *same* host code that drives WLED.
-3. **Standalone (step 3)**: `blitzen upload --target panel --asset clip.gif` then unplug the
-   host — the loop keeps running. Send a live frame → it preempts; stop → it resumes per the
-   `--resume` policy (default idle-timeout).
-4. **INFO**: `blitzen info --target panel` reports the same free-RAM / slot figures over the
-   wire.
+## On-hardware validation (all ✓ on a real board)
+
+Validated on a Feather M0 + 32×32 panel joined to WiFi (`10.66.27.190`), default 3-bit build:
+
+1. **Boot** ✓ — diagonal-rainbow fallback shows; serial prints free RAM 7635 B, slot
+   capacity 6, and the dotted-quad IP after WiFi join.
+2. **Live DDP** ✓ — `blitzen run --pattern plasma --target panel` renders plasma on the panel,
+   the same host code path as the software sink (and, in future, WLED).
+3. **Control over WiFi** ✓ — `blitzen info --target panel` returns free RAM + slot usage.
+4. **Standalone loop** ✓ — `blitzen upload --target panel --asset clip.gif` stores 6 frames and
+   plays them untethered after the host process exits.
+5. **Preempt + resume** ✓ — a live `run` preempts the loop; ~`idle_ms` after it stops, the loop
+   resumes (default idle policy; `--resume explicit` holds the last frame instead).
+6. **Concurrency** ✓ — one `blitzen run --assign panel=plasma --assign localsink=scroll` drives
+   the panel and a second DDP target at once. *Pending:* the same test against a real WLED array
+   (none on the LAN yet) — the host path is identical.
 
 ## Resume policy (open question 5)
 

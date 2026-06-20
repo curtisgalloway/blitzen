@@ -39,7 +39,17 @@
 // ---------------------------------------------------------------------------------------
 #define PANEL_W 32
 #define PANEL_H 32
-#define BIT_DEPTH 4  // 4 saves RAM (~4 KB); raise to 5-6 for more color depth (~6 KB).
+
+// Measured on real hardware: at 32x32, Protomatter dominates SRAM (~16 KB at BIT_DEPTH 4,
+// double-buffered), which leaves only a few slot-ring frames on the 32 KB SAMD21. Both are
+// overridable from the build (e.g. -DBIT_DEPTH=3 / -DDOUBLE_BUFFER=false) to trade color
+// depth / tear-free updates for more standalone-loop frames.
+#ifndef BIT_DEPTH
+#define BIT_DEPTH 3  // measured: 11-frame loop, tear-free, 512 colors on this 32x32 panel
+#endif
+#ifndef DOUBLE_BUFFER
+#define DOUBLE_BUFFER true
+#endif
 
 static const uint16_t NUM_PIXELS = PANEL_W * PANEL_H;            // 1024
 static const uint16_t IDX16_BYTES = NUM_PIXELS / 2;             // 512  (two 4-bit idx/byte)
@@ -57,7 +67,7 @@ uint8_t latchPin = 0;
 uint8_t oePin = 1;
 
 Adafruit_Protomatter matrix(PANEL_W, BIT_DEPTH, 1, rgbPins, 4, addrPins, clockPin, latchPin,
-                            oePin, /*doubleBuffer=*/true);
+                            oePin, /*doubleBuffer=*/DOUBLE_BUFFER);
 
 // ---------------------------------------------------------------------------------------
 // ATWINC1500 control pins for the Adafruit Feather M0 WiFi.
@@ -135,9 +145,14 @@ void setup() {
   while (!Serial && millis() - serialWait < 2000) {
   }
 
+  Serial.print("free RAM at boot (bytes): ");
+  Serial.println(freeRam());
+
   ProtomatterStatus status = matrix.begin();
   Serial.print("Protomatter begin status: ");
   Serial.println((int)status);
+  Serial.print("free RAM after Protomatter (bytes): ");
+  Serial.println(freeRam());
 
   WiFi.setPins(WINC_CS, WINC_IRQ, WINC_RST, WINC_EN);
   Serial.print("Joining WiFi: ");
@@ -150,8 +165,15 @@ void setup() {
   }
   Serial.println();
   if (WiFi.status() == WL_CONNECTED) {
+    IPAddress ip = WiFi.localIP();
     Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
+    Serial.print(ip[0]);
+    Serial.print('.');
+    Serial.print(ip[1]);
+    Serial.print('.');
+    Serial.print(ip[2]);
+    Serial.print('.');
+    Serial.println(ip[3]);
   } else {
     Serial.println("WiFi NOT connected (will keep retrying in background)");
   }
@@ -164,7 +186,11 @@ void setup() {
   Serial.print("free RAM after init (bytes): ");
   Serial.println(freeRamAtBoot);  // <-- ON-HARDWARE TODO: record this in README.md
 
-  const int margin = 4096;  // headroom for stack growth + transient allocations
+  // Headroom left free above the slot pool for stack growth. Must cover WiFi101's UDP
+  // RX path, which is deep: with a 1024 margin, freeRam() went NEGATIVE during an INFO
+  // request on real hardware (stack/heap near-collision). 4096 keeps ~2.7 KB free under
+  // load on this build. Measured, not guessed.
+  const int margin = 4096;
   long pool = (long)freeRamAtBoot - margin;
   int perSlot = BYTES_PER_SLOT + (int)sizeof(uint16_t) + (int)sizeof(bool);
   maxSlots = (pool > 0) ? (int)(pool / perSlot) : 0;

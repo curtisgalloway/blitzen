@@ -8,8 +8,10 @@ dist/
 .pytest_cache/
 
 # Local device/secret config (commit the .example versions instead)
+devices.toml
 host/devices.toml
 firmware/m0/config.h
+firmware/m0/secrets.yaml
 
 # Scratch output (e.g. ddp_sink PNG dumps)
 /scratch/

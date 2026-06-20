@@ -113,12 +113,16 @@ led_control_design.md / claude_code_handoff.md / AGENTS.md
 
 ## Status
 
-The host is fully implemented and tested (run `uv run pytest`); the live path is verified in
-software via the DDP sink. The M0 firmware is written **to the protocols** but has not been
-compiled or run on a board here — on-hardware steps (real pixels, the free-RAM measurement,
-the WLED version check) are the operator's to run and are marked `TODO` in the firmware
-README. The host wire format (`host/protocol.py`, `host/transports/ddp.py`) is the contract
-the firmware mirrors.
+The host is fully implemented and tested (`uv run pytest`, 83 tests). The M0 firmware is
+**validated on real hardware** (Feather M0 + 32×32 panel on WiFi): WiFi join, live DDP
+rendering, control over WiFi, an untethered RAM loop, live-preempts-loop with idle-timeout
+resume, and concurrent multi-target drive. Measured memory and the validation log are in
+`firmware/m0/README.md` (notably: Protomatter dominates SRAM, so the default is 3-bit /
+6-frame loop). Remaining hardware TODO: the same checks against a **real WLED array** — none on
+the LAN yet, but the host drives WLED through the same DDP path already proven on the M0.
+
+Build the firmware with `firmware/m0/flash.sh` (fills `config.h` from `secrets.yaml`, compiles,
+uploads).
 
 ## License
 
